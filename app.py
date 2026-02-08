@@ -4,148 +4,144 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 import re
 
-# --- CONFIG ---
+# --- 1. CONFIG & SETUP ---
 st.set_page_config(page_title="SpendWise AI", layout="wide")
 
-# --- UTILS: VALIDATION ---
+# --- 2. SECURITY CONSTRAINTS ---
 def validate_email(email):
-    return email.endswith("@gmail.com")
+    return email.lower().endswith("@gmail.com")
 
 def validate_password(password):
-    # Min 6 chars, 1 Upper, 1 Lower, 1 Number, 1 Special Char
+    # Constraint: 6+ chars, 1 Upper, 1 Lower, 1 Number, 1 Special Char
     if len(password) < 6:
         return False
-    if not re.search("[a-z]", password): return False
-    if not re.search("[A-Z]", password): return False
-    if not re.search("[0-9]", password): return False
-    if not re.search("[!@#$%^&*(),.?\\":{}|<>]", password): return False
+    if not re.search(r"[a-z]", password): return False
+    if not re.search(r"[A-Z]", password): return False
+    if not re.search(r"[0-9]", password): return False
+    # Rectified Regex string using single quotes to avoid SyntaxError
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password): return False
     return True
 
-# --- SESSION STATE INITIALIZATION ---
+# --- 3. SESSION STATE (MOCK DATABASE) ---
 if 'users' not in st.session_state:
-    st.session_state.users = {} # Format: {username: {password, fullname, email, budget}}
+    st.session_state.users = {} # {username: {password, name, budget, expenses: []}}
 if 'logged_in_user' not in st.session_state:
     st.session_state.logged_in_user = None
 if 'page' not in st.session_state:
     st.session_state.page = "Home"
-if 'expenses' not in st.session_state:
-    st.session_state.expenses = []
 
-# --- PAGE: HOME ---
+def nav(page_name):
+    st.session_state.page = page_name
+    st.rerun()
+
+# --- 4. NAVIGATION LOGIC ---
+
+# HOME PAGE
 if st.session_state.page == "Home":
     st.title("🚀 SpendWise AI")
-    st.subheader("Smart Finance Tracking & Predictive Analytics")
+    st.subheader("Smart Finance Tracking with Predictive Alerts")
     col1, col2 = st.columns(2)
     with col1:
         st.write("### AI-Powered Budgeting")
-        st.markdown("- **Forecasts:** Predicts trends.\n- **Control:** Set hard limits.\n- **Alerts:** Get notified when overspending.")
-        if st.button("Login", use_container_width=True):
-            st.session_state.page = "Login"
-            st.rerun()
-        if st.button("Register", use_container_width=True):
-            st.session_state.page = "Register"
-            st.rerun()
+        st.markdown("- **Strict Validation:** Secure login and registration.\n- **Budget Limits:** Set and manage your spending caps.\n- **Real-time Alerts:** Notifications before you overspend.")
+        if st.button("Login", use_container_width=True): nav("Login")
+        if st.button("Register", use_container_width=True): nav("Register")
     with col2:
         st.image("https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&q=80&w=800")
 
-# --- PAGE: REGISTRATION ---
+# REGISTRATION PAGE
 elif st.session_state.page == "Register":
     st.title("📝 Create Account")
     with st.form("reg_form"):
-        fname = st.text_input("Full Name")
-        uname = st.text_input("Username")
-        email = st.text_input("Email Address (must be @gmail.com)")
+        f_name = st.text_input("Full Name")
+        u_name = st.text_input("Username")
+        email = st.text_input("Email Address (@gmail.com only)")
         phone = st.text_input("Phone Number")
-        gender = st.selectbox("Gender", ["Male", "Female", "Other"])
-        pwd = st.text_input("Create Password", type="password", help="Min 6 chars, 1 Upper, 1 Lower, 1 Number, 1 Special")
-        cpwd = st.text_input("Confirm Password", type="password")
+        gender = st.radio("Gender", ["Male", "Female", "Other"], horizontal=True)
+        p1 = st.text_input("Create Password", type="password")
+        p2 = st.text_input("Confirm Password", type="password")
         
-        submit = st.form_submit_button("Register")
-        if submit:
-            if uname in st.session_state.users:
-                st.error("Username already exists!")
+        if st.form_submit_button("Sign Up"):
+            if u_name in st.session_state.users:
+                st.error("Username already exists.")
             elif not validate_email(email):
-                st.error("Email must end with @gmail.com")
-            elif not validate_password(pwd):
-                st.error("Password must be 6+ chars with Upper, Lower, Number, and Special Char.")
-            elif pwd != cpwd:
+                st.error("Email must be a @gmail.com address.")
+            elif not validate_password(p1):
+                st.error("Password must be 6+ chars with Upper, Lower, Number, and Special Symbol.")
+            elif p1 != p2:
                 st.error("Passwords do not match.")
             else:
-                st.session_state.users[uname] = {"password": pwd, "name": fname, "budget": 0.0}
-                st.success("Registration Successful! Please Login.")
-                st.session_state.page = "Login"
-                st.rerun()
-    st.button("Back to Home", on_click=lambda: st.session_state.update({"page": "Home"}))
+                st.session_state.users[u_name] = {
+                    "password": p1, "name": f_name, "budget": 0.0, "expenses": []
+                }
+                st.success("Account created! Redirecting to login...")
+                nav("Login")
+    st.button("Back", on_click=lambda: nav("Home"))
 
-# --- PAGE: LOGIN ---
+# LOGIN PAGE
 elif st.session_state.page == "Login":
-    st.title("🔑 User Login")
+    st.title("🔑 Secure Login")
     with st.form("login_form"):
-        uname = st.text_input("Username")
-        pwd = st.text_input("Password", type="password")
-        submit = st.form_submit_button("Login")
-        
-        if submit:
-            if uname in st.session_state.users and st.session_state.users[uname]["password"] == pwd:
-                if validate_password(pwd):
-                    st.session_state.logged_in_user = uname
-                    st.session_state.page = "Dashboard"
-                    st.rerun()
+        u_name = st.text_input("Username")
+        p_word = st.text_input("Password", type="password")
+        if st.form_submit_button("Login"):
+            if u_name in st.session_state.users and st.session_state.users[u_name]["password"] == p_word:
+                if validate_password(p_word): # Constraint check on login
+                    st.session_state.logged_in_user = u_name
+                    nav("Dashboard")
                 else:
-                    st.error("Password does not meet security constraints.")
+                    st.error("Your password is insecure. Please reset it to match requirements.")
             else:
-                st.error("Invalid Username or Password")
-    st.button("Back to Home", on_click=lambda: st.session_state.update({"page": "Home"}))
+                st.error("Invalid credentials.")
+    st.button("Back", on_click=lambda: nav("Home"))
 
-# --- PAGE: DASHBOARD ---
+# DASHBOARD PAGE
 elif st.session_state.page == "Dashboard":
     user = st.session_state.logged_in_user
-    st.title(f"📊 Dashboard: Welcome {st.session_state.users[user]['name']}")
+    u_data = st.session_state.users[user]
     
+    st.sidebar.title(f"Hello, {u_data['name']}")
     if st.sidebar.button("Logout"):
         st.session_state.logged_in_user = None
-        st.session_state.page = "Home"
-        st.rerun()
+        nav("Home")
 
-    # Budget Setting
-    st.subheader("⚙️ Manage Budget")
-    new_budget = st.number_input("Set Monthly Expense Limit ($)", min_value=0.0, value=float(st.session_state.users[user]['budget']))
-    st.session_state.users[user]['budget'] = new_budget
-
-    # Expense Entry
-    st.divider()
-    col_a, col_b = st.columns([1, 2])
+    st.title("📊 Personal Expense Dashboard")
     
-    with col_a:
-        st.subheader("Add Expense")
-        with st.form("exp_form"):
-            item = st.text_input("Item")
-            amt = st.number_input("Amount", min_value=0.0)
-            if st.form_submit_button("Add Record"):
-                st.session_state.expenses.append({"User": user, "Item": item, "Amount": amt})
-                st.toast(f"Logged {item}")
+    # BUDGET MANAGEMENT
+    st.subheader("💰 Budget Settings")
+    budget = st.number_input("Set your Monthly Budget Limit ($)", min_value=0.0, value=float(u_data['budget']))
+    u_data['budget'] = budget
 
-    # Track & Manage
-    with col_b:
-        st.subheader("Expense Tracking")
-        user_exps = [e for e in st.session_state.expenses if e['User'] == user]
-        df = pd.DataFrame(user_exps)
-        
-        if not df.empty:
+    st.divider()
+
+    # EXPENSE TRACKER
+    col_in, col_disp = st.columns([1, 2])
+    
+    with col_in:
+        st.write("### Add Expense")
+        with st.form("expense_add"):
+            item = st.text_input("Description")
+            amt = st.number_input("Amount ($)", min_value=0.01)
+            if st.form_submit_button("Log Expense"):
+                u_data['expenses'].append({"Item": item, "Amount": amt})
+                st.rerun()
+
+    with col_disp:
+        st.write("### Expense Tracking")
+        if u_data['expenses']:
+            df = pd.DataFrame(u_data['expenses'])
             total_spent = df['Amount'].sum()
-            budget = st.session_state.users[user]['budget']
             
-            # Metrics
-            m1, m2 = st.columns(2)
-            m1.metric("Total Spent", f"${total_spent:.2f}")
-            m2.metric("Budget Limit", f"${budget:.2f}")
-            
-            # ALERT SYSTEM
-            if total_spent > budget and budget > 0:
-                st.error(f"⚠️ ALERT: You have exceeded your budget by ${total_spent - budget:.2f}!")
-            elif total_spent > (budget * 0.8) and budget > 0:
-                st.warning("🔔 Caution: You have reached 80% of your budget.")
+            # --- THE ALERT SYSTEM ---
+            if budget > 0:
+                if total_spent > budget:
+                    st.error(f"🚨 BUDGET OUTRIDDEN! You have exceeded your ${budget} limit by ${total_spent - budget:.2f}!")
+                elif total_spent >= (budget * 0.8):
+                    st.warning(f"⚠️ Warning: You have used {int((total_spent/budget)*100)}% of your budget.")
+                else:
+                    st.success(f"✅ Budget Healthy: ${budget - total_spent:.2f} remaining.")
 
-            st.dataframe(df[['Item', 'Amount']], use_container_width=True)
+            st.metric("Total Spent", f"${total_spent:.2f}")
+            st.dataframe(df, use_container_width=True)
         else:
-            st.info("No expenses logged yet.")
+            st.info("No expenses logged yet. Start by adding one!")
