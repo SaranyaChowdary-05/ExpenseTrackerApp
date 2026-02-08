@@ -12,19 +12,17 @@ def validate_email(email):
     return email.lower().endswith("@gmail.com")
 
 def validate_password(password):
-    # Constraint: 6+ chars, 1 Upper, 1 Lower, 1 Number, 1 Special Char
-    if len(password) < 6:
-        return False
+    if len(password) < 6: return False
     if not re.search(r"[a-z]", password): return False
     if not re.search(r"[A-Z]", password): return False
     if not re.search(r"[0-9]", password): return False
-    # Rectified Regex string using single quotes to avoid SyntaxError
     if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password): return False
     return True
 
 # --- 3. SESSION STATE (MOCK DATABASE) ---
+# This dictionary persists as long as the tab is open.
 if 'users' not in st.session_state:
-    st.session_state.users = {} # {username: {password, name, budget, expenses: []}}
+    st.session_state.users = {} 
 if 'logged_in_user' not in st.session_state:
     st.session_state.logged_in_user = None
 if 'page' not in st.session_state:
@@ -43,7 +41,7 @@ if st.session_state.page == "Home":
     col1, col2 = st.columns(2)
     with col1:
         st.write("### AI-Powered Budgeting")
-        st.markdown("- **Strict Validation:** Secure login and registration.\n- **Budget Limits:** Set and manage your spending caps.\n- **Real-time Alerts:** Notifications before you overspend.")
+        st.markdown("- **Persistent Data:** Accounts stay active for your session.\n- **Budget Limits:** Set and manage your spending caps.\n- **Security:** New Forgot Password & Delete Account features.")
         if st.button("Login", use_container_width=True): nav("Login")
         if st.button("Register", use_container_width=True): nav("Register")
     with col2:
@@ -56,8 +54,6 @@ elif st.session_state.page == "Register":
         f_name = st.text_input("Full Name")
         u_name = st.text_input("Username")
         email = st.text_input("Email Address (@gmail.com only)")
-        phone = st.text_input("Phone Number")
-        gender = st.radio("Gender", ["Male", "Female", "Other"], horizontal=True)
         p1 = st.text_input("Create Password", type="password")
         p2 = st.text_input("Confirm Password", type="password")
         
@@ -71,12 +67,17 @@ elif st.session_state.page == "Register":
             elif p1 != p2:
                 st.error("Passwords do not match.")
             else:
+                # DATA PERSISTENCE: Saved into st.session_state.users
                 st.session_state.users[u_name] = {
-                    "password": p1, "name": f_name, "budget": 0.0, "expenses": []
+                    "password": p1, "name": f_name, "email": email, "budget": 0.0, "expenses": []
                 }
-                st.success("Account created! Redirecting to login...")
+                st.success("Account created! You can now login.")
                 nav("Login")
-    st.button("Back", on_click=lambda: nav("Home"))
+    
+    # REDIRECT TO LOGIN
+    st.write("Already have an account?")
+    if st.button("Go to Login"): nav("Login")
+    st.button("Back to Home", on_click=lambda: nav("Home"))
 
 # LOGIN PAGE
 elif st.session_state.page == "Login":
@@ -86,14 +87,42 @@ elif st.session_state.page == "Login":
         p_word = st.text_input("Password", type="password")
         if st.form_submit_button("Login"):
             if u_name in st.session_state.users and st.session_state.users[u_name]["password"] == p_word:
-                if validate_password(p_word): # Constraint check on login
-                    st.session_state.logged_in_user = u_name
-                    nav("Dashboard")
-                else:
-                    st.error("Your password is insecure. Please reset it to match requirements.")
+                st.session_state.logged_in_user = u_name
+                nav("Dashboard")
             else:
                 st.error("Invalid credentials.")
-    st.button("Back", on_click=lambda: nav("Home"))
+    
+    # NEW NAVIGATION FEATURES
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Forgot Password?"): nav("ForgotPassword")
+    with col2:
+        if st.button("New here? Register"): nav("Register")
+    
+    st.divider()
+    st.button("Back to Home", on_click=lambda: nav("Home"))
+
+# FORGOT PASSWORD PAGE
+elif st.session_state.page == "ForgotPassword":
+    st.title("🔒 Reset Password")
+    st.info("Enter your username and your registered Gmail to reset your password.")
+    with st.form("forgot_form"):
+        u_name = st.text_input("Username")
+        email = st.text_input("Registered Email")
+        new_p = st.text_input("New Password", type="password")
+        
+        if st.form_submit_button("Update Password"):
+            if u_name in st.session_state.users and st.session_state.users[u_name]["email"] == email:
+                if validate_password(new_p):
+                    st.session_state.users[u_name]["password"] = new_p
+                    st.success("Password updated successfully!")
+                    nav("Login")
+                else:
+                    st.error("New password does not meet security requirements.")
+            else:
+                st.error("Username and Email do not match our records.")
+    
+    if st.button("Back to Login"): nav("Login")
 
 # DASHBOARD PAGE
 elif st.session_state.page == "Dashboard":
@@ -101,6 +130,14 @@ elif st.session_state.page == "Dashboard":
     u_data = st.session_state.users[user]
     
     st.sidebar.title(f"Hello, {u_data['name']}")
+    
+    # DELETE ACCOUNT FEATURE
+    if st.sidebar.button("🗑️ Delete Account", type="primary"):
+        del st.session_state.users[user]
+        st.session_state.logged_in_user = None
+        st.warning("Account deleted.")
+        nav("Home")
+
     if st.sidebar.button("Logout"):
         st.session_state.logged_in_user = None
         nav("Home")
@@ -132,16 +169,15 @@ elif st.session_state.page == "Dashboard":
             df = pd.DataFrame(u_data['expenses'])
             total_spent = df['Amount'].sum()
             
-            # --- THE ALERT SYSTEM ---
             if budget > 0:
                 if total_spent > budget:
-                    st.error(f"🚨 BUDGET OUTRIDDEN! You have exceeded your ${budget} limit by ${total_spent - budget:.2f}!")
+                    st.error(f"🚨 BUDGET EXCEEDED! Limit: ${budget} | Spent: ${total_spent}")
                 elif total_spent >= (budget * 0.8):
-                    st.warning(f"⚠️ Warning: You have used {int((total_spent/budget)*100)}% of your budget.")
+                    st.warning(f"⚠️ Warning: {int((total_spent/budget)*100)}% used.")
                 else:
-                    st.success(f"✅ Budget Healthy: ${budget - total_spent:.2f} remaining.")
+                    st.success(f"✅ ${budget - total_spent:.2f} remaining.")
 
             st.metric("Total Spent", f"${total_spent:.2f}")
             st.dataframe(df, use_container_width=True)
         else:
-            st.info("No expenses logged yet. Start by adding one!")
+            st.info("No expenses logged yet.")
